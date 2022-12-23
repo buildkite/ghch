@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/Songmu/ghch"
+	"github.com/buildkite/ghch"
 )
 
 func main() {
