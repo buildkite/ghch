@@ -51,16 +51,6 @@ type Section struct {
 }
 
 var (
-	tmplStr = `{{$ret := . -}}
-## [{{.ToRevision}}](https://github.com/{{.Owner}}/{{.Repo}}/tree/{{.ToRevision}}) ({{.ChangedAt.Format "2006-01-02"}})
-[Full Changelog](https://github.com/{{.Owner}}/{{.Repo}}/compare/{{.FromRevision}}...{{.ToRevision}})
-
-### Changed
-{{- range .PullRequests}}
-- {{.Title}} [#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}) (@{{.User.Login}})
-{{- end}}`
-	mdTmpl = &template.Template{}
-
 	groupTmpl = `{{$ret := . -}}
 ## [{{.ToRevision}}](https://github.com/{{.Owner}}/{{.Repo}}/tree/{{.ToRevision}}) ({{.ChangedAt.Format "2006-01-02"}})
 [Full Changelog](https://github.com/{{.Owner}}/{{.Repo}}/compare/{{.FromRevision}}...{{.ToRevision}})
@@ -78,10 +68,6 @@ var (
 
 func init() {
 	var err error
-	mdTmpl, err = template.New("md-changelog").Parse(tmplStr)
-	if err != nil {
-		log.Fatal(err)
-	}
 	groupMdown, err = template.New("md-changelog").Funcs(groupFuncs).Parse(groupTmpl)
 	if err != nil {
 		log.Fatal(err)
@@ -90,16 +76,8 @@ func init() {
 
 func (rs Section) toMkdn() (string, error) {
 	var b bytes.Buffer
-	if len(rs.Groups) > 0 {
-		err := groupMdown.Execute(&b, rs)
-		return b.String(), err
-	}
-
-	err := mdTmpl.Execute(&b, rs)
-	if err != nil {
-		return "", err
-	}
-	return b.String(), nil
+	err := groupMdown.Execute(&b, rs)
+	return b.String(), err
 }
 
 func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error) {
@@ -124,6 +102,8 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 		return Section{}, err
 	}
 
+	// a special group exists just for the deps, as they're collapsed into a single
+	// line of PR links rather than each individually represented
 	groups := make(map[string][]*github.PullRequest, 0)
 	if gh.LabelHeadings {
 		for _, pr := range r {
@@ -142,6 +122,8 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 			}
 			groups[group] = append(groups[group], pr)
 		}
+	} else {
+		groups["changed"] = r
 	}
 
 	return Section{
