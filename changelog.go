@@ -46,9 +46,12 @@ type Section struct {
 	Owner        string                `json:"owner"`
 	Repo         string                `json:"repo"`
 	HTMLURL      string                `json:"html_url"`
+
+	Groups map[string][]*github.PullRequest
 }
 
-var tmplStr = `{{$ret := . -}}
+var (
+	tmplStr = `{{$ret := . -}}
 ## [{{.ToRevision}}](https://github.com/{{.Owner}}/{{.Repo}}/tree/{{.ToRevision}}) ({{.ChangedAt.Format "2006-01-02"}})
 [Full Changelog](https://github.com/{{.Owner}}/{{.Repo}}/compare/{{.FromRevision}}...{{.ToRevision}})
 
@@ -56,8 +59,22 @@ var tmplStr = `{{$ret := . -}}
 {{- range .PullRequests}}
 - {{.Title}} [#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}) (@{{.User.Login}})
 {{- end}}`
+	mdTmpl = &template.Template{}
 
-var mdTmpl *template.Template
+	groupTmpl = `{{$ret := . -}}
+## [{{.ToRevision}}](https://github.com/{{.Owner}}/{{.Repo}}/tree/{{.ToRevision}}) ({{.ChangedAt.Format "2006-01-02"}})
+[Full Changelog](https://github.com/{{.Owner}}/{{.Repo}}/compare/{{.FromRevision}}...{{.ToRevision}})
+{{range $group, $value := .Groups}}
+### {{ $group | title }}
+{{- range $value }}
+- {{.Title}} [#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}) (@{{.User.Login}})
+{{- end}}
+{{end -}}`
+	groupMdown = &template.Template{}
+	groupFuncs = template.FuncMap{
+		"title": strings.Title,
+	}
+)
 
 func init() {
 	var err error
@@ -65,10 +82,19 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	groupMdown, err = template.New("md-changelog").Funcs(groupFuncs).Parse(groupTmpl)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (rs Section) toMkdn() (string, error) {
 	var b bytes.Buffer
+	if len(rs.Groups) > 0 {
+		err := groupMdown.Execute(&b, rs)
+		return b.String(), err
+	}
+
 	err := mdTmpl.Execute(&b, rs)
 	if err != nil {
 		return "", err
@@ -97,6 +123,27 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 	if err != nil {
 		return Section{}, err
 	}
+
+	groups := make(map[string][]*github.PullRequest, 0)
+	if gh.LabelHeadings {
+		for _, pr := range r {
+			group := "changed"
+			if len(pr.Labels) > 0 {
+				for _, l := range pr.Labels {
+					if name, found := strings.CutPrefix(*l.Name, "release-heading/"); found {
+						group = name
+						break
+					}
+				}
+			}
+
+			if _, ok := groups[group]; !ok {
+				groups[group] = make([]*github.PullRequest, 0)
+			}
+			groups[group] = append(groups[group], pr)
+		}
+	}
+
 	return Section{
 		PullRequests: r,
 		FromRevision: from,
@@ -105,5 +152,6 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 		Owner:        owner,
 		Repo:         repo,
 		HTMLURL:      htmlURL,
+		Groups:       groups,
 	}, nil
 }
