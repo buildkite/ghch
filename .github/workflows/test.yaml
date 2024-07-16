@@ -24,7 +24,9 @@ jobs:
         fetch-depth: 1
     - name: lint
       run: |
-        GO111MODULE=off GOBIN=$(pwd)/bin go get golang.org/x/lint/golint
+        cd ..
+        GOBIN=$(pwd)/bin go install golang.org/x/lint/golint@latest
+        cd -
         bin/golint -set_exit_status ./...
       if: "matrix.os == 'ubuntu-latest' || matrix.os == 'macOS-latest'"
     - name: test
