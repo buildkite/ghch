@@ -39,13 +39,12 @@ func insertNewChangelog(orig []byte, section string) string {
 
 // Section contains changes between two revisions
 type Section struct {
-	PullRequests []*github.PullRequest `json:"pull_requests"`
-	FromRevision string                `json:"from_revision"`
-	ToRevision   string                `json:"to_revision"`
-	ChangedAt    time.Time             `json:"changed_at"`
-	Owner        string                `json:"owner"`
-	Repo         string                `json:"repo"`
-	HTMLURL      string                `json:"html_url"`
+	FromRevision string    `json:"from_revision"`
+	ToRevision   string    `json:"to_revision"`
+	ChangedAt    time.Time `json:"changed_at"`
+	Owner        string    `json:"owner"`
+	Repo         string    `json:"repo"`
+	HTMLURL      string    `json:"html_url"`
 
 	Deps   []*github.PullRequest            `json:"-"`
 	Groups map[string][]*github.PullRequest `json:"-"`
@@ -112,38 +111,15 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 		return Section{}, err
 	}
 
-	// a special group exists just for the deps, as they're collapsed into a single
-	// line of PR links rather than each individually represented
-	deps := []*github.PullRequest{}
 	groups := make(map[string][]*github.PullRequest, 0)
+	deps := make([]*github.PullRequest, 0)
 	if gh.LabelHeadings {
-		for _, pr := range r {
-			group := "changed"
-			if len(pr.Labels) > 0 {
-				for _, l := range pr.Labels {
-					if name, found := strings.CutPrefix(*l.Name, "release-heading/"); found {
-						group = name
-						break
-					}
-				}
-			}
-
-			if group == "dependencies" {
-				deps = append(deps, pr)
-				continue
-			}
-
-			if _, ok := groups[group]; !ok {
-				groups[group] = make([]*github.PullRequest, 0)
-			}
-			groups[group] = append(groups[group], pr)
-		}
+		groups, deps = splitOutGroups(r)
 	} else {
 		groups["changed"] = r
 	}
 
 	return Section{
-		PullRequests: r,
 		FromRevision: from,
 		ToRevision:   to,
 		ChangedAt:    t,
@@ -153,4 +129,35 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 		Deps:         deps,
 		Groups:       groups,
 	}, nil
+}
+
+// a special group exists just for the deps, as they're collapsed into a single
+// line of PR links rather than each individually represented
+func splitOutGroups(r []*github.PullRequest) (map[string][]*github.PullRequest, []*github.PullRequest) {
+	deps := []*github.PullRequest{}
+	groups := make(map[string][]*github.PullRequest, 0)
+
+	for _, pr := range r {
+		group := "changed"
+		if len(pr.Labels) > 0 {
+			for _, l := range pr.Labels {
+				if name, found := strings.CutPrefix(*l.Name, "release-heading/"); found {
+					group = name
+					break
+				}
+			}
+		}
+
+		if group == "dependencies" {
+			deps = append(deps, pr)
+			continue
+		}
+
+		if _, ok := groups[group]; !ok {
+			groups[group] = make([]*github.PullRequest, 0)
+		}
+		groups[group] = append(groups[group], pr)
+	}
+
+	return groups, deps
 }
