@@ -2,6 +2,8 @@ package ghch
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -511,7 +513,6 @@ func TestMarkdown(t *testing.T) {
 	}
 	moment := time.Date(2020, 1, 21, 14, 16, 0, 0, time.UTC)
 	s := Section{
-		PullRequests: prs,
 		FromRevision: "v1.0.0",
 		ToRevision:   "v2.0.0",
 		ChangedAt:    moment,
@@ -533,4 +534,114 @@ func TestMarkdown(t *testing.T) {
 	if want != got {
 		t.Errorf("\nwanted: %#v\n   got: %#v", want, got)
 	}
+}
+
+func TestNewMarkdown(t *testing.T) {
+	inPrs := []string{
+		makePR(1, 500, "Add things", makeLabel("bug")),
+		makePR(2, 501, "Fix things", makeLabel("release-heading/internal")),
+		makePR(1, 502, "Remove things", makeLabel("release-heading/added")),
+	}
+	in := fmt.Sprintf("[%s]", strings.Join(inPrs, ","))
+
+	var prs []*github.PullRequest
+	err := json.Unmarshal([]byte(in), &prs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moment := time.Date(2020, 7, 19, 14, 15, 0, 0, time.UTC)
+	s := Section{
+		FromRevision: "v1.0.0",
+		ToRevision:   "v2.0.0",
+		ChangedAt:    moment,
+		Owner:        "octocat",
+		Repo:         "Hello-World",
+		HTMLURL:      "https://github.com/octocat/Hello-World",
+		Groups:       map[string][]*github.PullRequest{"changed": prs},
+	}
+
+	want := `## [v2.0.0](https://github.com/octocat/Hello-World/tree/v2.0.0) (2020-07-19)
+[Full Changelog](https://github.com/octocat/Hello-World/compare/v1.0.0...v2.0.0)
+
+### Changed
+- Add things [#500](https://github.com/octocat/Hello-World/pull/500) (@octocat)
+- Fix things [#501](https://github.com/octocat/Hello-World/pull/501) (@octocat)
+- Remove things [#502](https://github.com/octocat/Hello-World/pull/502) (@octocat)
+`
+	got, err := s.toMkdn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want != got {
+		t.Errorf("\nwanted: %#v\n   got: %#v", want, got)
+	}
+}
+
+func TestLabelHeadings(t *testing.T) {
+	inPrs := []string{
+		makePR(1, 500, "Add things", makeLabel("bug")),
+		makePR(2, 501, "Fix things", makeLabel("release-heading/internal")),
+		makePR(1, 502, "Remove things", makeLabel("release-heading/added")),
+		makePR(1, 503, "Remove more", makeLabel("release-heading/added")),
+		makePR(1, 504, "Update deps", makeLabel("release-heading/dependencies")),
+	}
+	in := fmt.Sprintf("[%s]", strings.Join(inPrs, ","))
+
+	var prs []*github.PullRequest
+	err := json.Unmarshal([]byte(in), &prs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	groups, deps := splitOutGroups(prs)
+	if len(groups) != 3 || len(deps) != 1 {
+		t.Errorf("\nwanted: len(groups) = 3, len(deps) = 1\n   got: len(groups) = %d, len(deps) = %d", len(groups), len(deps))
+	}
+
+	moment := time.Date(2020, 7, 19, 14, 15, 0, 0, time.UTC)
+	s := Section{
+		FromRevision: "v1.0.0",
+		ToRevision:   "v2.0.0",
+		ChangedAt:    moment,
+		Owner:        "octocat",
+		Repo:         "Hello-World",
+		HTMLURL:      "https://github.com/octocat/Hello-World",
+		Groups:       groups,
+		Deps:         deps,
+	}
+
+	want := `## [v2.0.0](https://github.com/octocat/Hello-World/tree/v2.0.0) (2020-07-19)
+[Full Changelog](https://github.com/octocat/Hello-World/compare/v1.0.0...v2.0.0)
+
+### Added
+- Remove things [#502](https://github.com/octocat/Hello-World/pull/502) (@octocat)
+- Remove more [#503](https://github.com/octocat/Hello-World/pull/503) (@octocat)
+
+### Changed
+- Add things [#500](https://github.com/octocat/Hello-World/pull/500) (@octocat)
+
+### Internal
+- Fix things [#501](https://github.com/octocat/Hello-World/pull/501) (@octocat)
+- Dependabot updates: [#504](https://github.com/octocat/Hello-World/pull/504), (@dependabot[bot])
+`
+	got, err := s.toMkdn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want != got {
+		t.Errorf("\nwanted: %#v\n   got: %#v", want, got)
+	}
+}
+
+const (
+	pr    = `{"id":%d,"number":%d,"title":%q,"user":{"login":"octocat"},"labels":[%s]}`
+	label = `{"name":%q}`
+)
+
+func makeLabel(l string) string {
+	return fmt.Sprintf(label, l)
+}
+
+func makePR(id, number int, title, labels string) string {
+	return fmt.Sprintf(pr, id, number, title, labels)
 }
