@@ -47,7 +47,8 @@ type Section struct {
 	Repo         string                `json:"repo"`
 	HTMLURL      string                `json:"html_url"`
 
-	Groups map[string][]*github.PullRequest
+	Deps   []*github.PullRequest            `json:"-"`
+	Groups map[string][]*github.PullRequest `json:"-"`
 }
 
 var (
@@ -59,10 +60,19 @@ var (
 {{- range $value }}
 - {{.Title}} [#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}) (@{{.User.Login}})
 {{- end}}
+{{- if $group | isInternal}}{{- if $ret | hasDeps }}
+- Dependabot updates: {{range $ret.Deps -}}[#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}), {{end}}(@dependabot[bot])
+{{- end}}{{end}}
 {{end -}}`
 	groupMdown = &template.Template{}
 	groupFuncs = template.FuncMap{
-		"title": strings.Title,
+		"title":      strings.Title,
+		"isInternal": func(s string) bool { return s == "internal" },
+		"hasDeps":    func(p Section) bool { return len(p.Deps) > 0 },
+		"separateDeps": func(p Section) bool {
+			_, hasInternal := p.Groups["internal"]
+			return len(p.Deps) > 0 && !hasInternal
+		},
 	}
 )
 
@@ -104,6 +114,7 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 
 	// a special group exists just for the deps, as they're collapsed into a single
 	// line of PR links rather than each individually represented
+	deps := []*github.PullRequest{}
 	groups := make(map[string][]*github.PullRequest, 0)
 	if gh.LabelHeadings {
 		for _, pr := range r {
@@ -115,6 +126,11 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 						break
 					}
 				}
+			}
+
+			if group == "dependencies" {
+				deps = append(deps, pr)
+				continue
 			}
 
 			if _, ok := groups[group]; !ok {
@@ -134,6 +150,7 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 		Owner:        owner,
 		Repo:         repo,
 		HTMLURL:      htmlURL,
+		Deps:         deps,
 		Groups:       groups,
 	}, nil
 }

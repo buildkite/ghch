@@ -518,12 +518,14 @@ func TestMarkdown(t *testing.T) {
 		Owner:        "octocat",
 		Repo:         "Hello-World",
 		HTMLURL:      "https://github.com/octocat/Hello-World",
+		Groups:       map[string][]*github.PullRequest{"changed": prs},
 	}
 	want := `## [v2.0.0](https://github.com/octocat/Hello-World/tree/v2.0.0) (2020-01-21)
 [Full Changelog](https://github.com/octocat/Hello-World/compare/v1.0.0...v2.0.0)
 
 ### Changed
-- Amazing new feature [#1347](https://github.com/octocat/Hello-World/pull/1347) (@octocat)`
+- Amazing new feature [#1347](https://github.com/octocat/Hello-World/pull/1347) (@octocat)
+`
 	got, err := s.toMkdn()
 	if err != nil {
 		t.Fatal(err)
