@@ -36,6 +36,7 @@ Generate changelog from git history, tags and merged pull requests
 -g, --git=          git path (default: git)
     --token=        github token
     --remote=       default remote name (default: origin)
+-l  --use-labels=   group the change list into sub-headings by label values
 ```
 
 ## GITHUB Token
@@ -123,6 +124,25 @@ git 1.8.5 or newer is required.
 
     % ghch --from v0.9.0 --to v0.9.1
     ...
+
+### use labels to group changes under different headings
+
+Labels that match the pattern `release-heading/{heading}` will place the change into corresponding `### Heading` sections.
+
+    % ghch -F markdown --from=v1.0.0 --next-version=v2.0.0 -l
+    ## [v2.0.0](https://github.com/octocat/Hello-World/tree/v2.0.0) (2020-07-19)
+    [Full Changelog](https://github.com/octocat/Hello-World/compare/v1.0.0...v2.0.0)
+    
+    ### Added
+    - Remove things [#502](https://github.com/octocat/Hello-World/pull/502) (@octocat)
+    - Remove more [#503](https://github.com/octocat/Hello-World/pull/503) (@octocat)
+    
+    ### Changed
+    - Add things [#500](https://github.com/octocat/Hello-World/pull/500) (@octocat)
+    
+    ### Internal
+    - Fix things [#501](https://github.com/octocat/Hello-World/pull/501) (@octocat)
+    - Dependabot updates: [#504](https://github.com/octocat/Hello-World/pull/504), (@dependabot[bot])
 
 ## Author
 
