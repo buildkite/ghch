@@ -583,7 +583,7 @@ func TestLabelHeadings(t *testing.T) {
 		makePR(2, 501, "Fix things", makeLabel("release-heading/internal")),
 		makePR(1, 502, "Remove things", makeLabel("release-heading/added")),
 		makePR(1, 503, "Remove more", makeLabel("release-heading/added")),
-		makePR(1, 504, "Update deps", makeLabel("release-heading/dependencies")),
+		makePR(1, 504, "Update deps", makeLabel("release-heading/dependabot")),
 	}
 	in := fmt.Sprintf("[%s]", strings.Join(inPrs, ","))
 

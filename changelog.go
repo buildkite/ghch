@@ -148,7 +148,7 @@ func splitOutGroups(r []*github.PullRequest) (map[string][]*github.PullRequest, 
 			}
 		}
 
-		if group == "dependencies" {
+		if group == "dependabot" {
 			deps = append(deps, pr)
 			continue
 		}
