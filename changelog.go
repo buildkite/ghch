@@ -39,29 +39,45 @@ func insertNewChangelog(orig []byte, section string) string {
 
 // Section contains changes between two revisions
 type Section struct {
-	PullRequests []*github.PullRequest `json:"pull_requests"`
-	FromRevision string                `json:"from_revision"`
-	ToRevision   string                `json:"to_revision"`
-	ChangedAt    time.Time             `json:"changed_at"`
-	Owner        string                `json:"owner"`
-	Repo         string                `json:"repo"`
-	HTMLURL      string                `json:"html_url"`
+	FromRevision string    `json:"from_revision"`
+	ToRevision   string    `json:"to_revision"`
+	ChangedAt    time.Time `json:"changed_at"`
+	Owner        string    `json:"owner"`
+	Repo         string    `json:"repo"`
+	HTMLURL      string    `json:"html_url"`
+
+	Deps   []*github.PullRequest            `json:"-"`
+	Groups map[string][]*github.PullRequest `json:"-"`
 }
 
-var tmplStr = `{{$ret := . -}}
+var (
+	groupTmpl = `{{$ret := . -}}
 ## [{{.ToRevision}}](https://github.com/{{.Owner}}/{{.Repo}}/tree/{{.ToRevision}}) ({{.ChangedAt.Format "2006-01-02"}})
 [Full Changelog](https://github.com/{{.Owner}}/{{.Repo}}/compare/{{.FromRevision}}...{{.ToRevision}})
-
-### Changed
-{{- range .PullRequests}}
+{{range $group, $value := .Groups}}
+### {{ $group | title }}
+{{- range $value }}
 - {{.Title}} [#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}) (@{{.User.Login}})
-{{- end}}`
-
-var mdTmpl *template.Template
+{{- end}}
+{{- if $group | isInternal}}{{- if $ret | hasDeps }}
+- Dependabot updates: {{range $ret.Deps -}}[#{{.Number}}](https://github.com/{{$ret.Owner}}/{{$ret.Repo}}/pull/{{.Number}}), {{end}}(@dependabot[bot])
+{{- end}}{{end}}
+{{end -}}`
+	groupMdown = &template.Template{}
+	groupFuncs = template.FuncMap{
+		"title":      strings.Title,
+		"isInternal": func(s string) bool { return s == "internal" },
+		"hasDeps":    func(p Section) bool { return len(p.Deps) > 0 },
+		"separateDeps": func(p Section) bool {
+			_, hasInternal := p.Groups["internal"]
+			return len(p.Deps) > 0 && !hasInternal
+		},
+	}
+)
 
 func init() {
 	var err error
-	mdTmpl, err = template.New("md-changelog").Parse(tmplStr)
+	groupMdown, err = template.New("md-changelog").Funcs(groupFuncs).Parse(groupTmpl)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,11 +85,8 @@ func init() {
 
 func (rs Section) toMkdn() (string, error) {
 	var b bytes.Buffer
-	err := mdTmpl.Execute(&b, rs)
-	if err != nil {
-		return "", err
-	}
-	return b.String(), nil
+	err := groupMdown.Execute(&b, rs)
+	return b.String(), err
 }
 
 func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error) {
@@ -97,13 +110,54 @@ func (gh *Ghch) getSection(ctx context.Context, from, to string) (Section, error
 	if err != nil {
 		return Section{}, err
 	}
+
+	groups := make(map[string][]*github.PullRequest, 0)
+	deps := make([]*github.PullRequest, 0)
+	if gh.LabelHeadings {
+		groups, deps = splitOutGroups(r)
+	} else {
+		groups["changed"] = r
+	}
+
 	return Section{
-		PullRequests: r,
 		FromRevision: from,
 		ToRevision:   to,
 		ChangedAt:    t,
 		Owner:        owner,
 		Repo:         repo,
 		HTMLURL:      htmlURL,
+		Deps:         deps,
+		Groups:       groups,
 	}, nil
+}
+
+// a special group exists just for the deps, as they're collapsed into a single
+// line of PR links rather than each individually represented
+func splitOutGroups(r []*github.PullRequest) (map[string][]*github.PullRequest, []*github.PullRequest) {
+	deps := []*github.PullRequest{}
+	groups := make(map[string][]*github.PullRequest, 0)
+
+	for _, pr := range r {
+		group := "changed"
+		if len(pr.Labels) > 0 {
+			for _, l := range pr.Labels {
+				if name, found := strings.CutPrefix(*l.Name, "release-heading/"); found {
+					group = name
+					break
+				}
+			}
+		}
+
+		if group == "dependabot" {
+			deps = append(deps, pr)
+			continue
+		}
+
+		if _, ok := groups[group]; !ok {
+			groups[group] = make([]*github.PullRequest, 0)
+		}
+		groups[group] = append(groups[group], pr)
+	}
+
+	return groups, deps
 }

@@ -15,6 +15,7 @@ func reducePR(pr *github.PullRequest) *github.PullRequest {
 		UpdatedAt:      pr.UpdatedAt,
 		MergedAt:       pr.MergedAt,
 		MergeCommitSHA: pr.MergeCommitSHA,
+		Labels:         pr.Labels,
 		User:           reduceUser(pr.User),
 		Head:           reducePullRequestBranch(pr.Head),
 		Base:           reducePullRequestBranch(pr.Base),
